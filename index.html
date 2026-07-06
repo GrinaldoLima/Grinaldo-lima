@@ -1,5 +1,4 @@
-
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -247,6 +246,22 @@ function defaultDB(){
   };
 }
 
+function normalizeDB(){
+  if(!Array.isArray(DB.clientes)) DB.clientes=[];
+  if(!Array.isArray(DB.receber)) DB.receber=[];
+  if(!Array.isArray(DB.pagar)) DB.pagar=[];
+  if(!Array.isArray(DB.obrigacoes)) DB.obrigacoes=[];
+  if(!Array.isArray(DB.agenda)) DB.agenda=[];
+  if(!Array.isArray(DB.crm)) DB.crm=[];
+  if(!Array.isArray(DB.usuarios)) DB.usuarios=[];
+  if(!DB.config) DB.config={logoTexto:'Lima Consultoria',assinaturaEmail:'',diasAlerta:5,whatsappAtivo:false,emailAtivo:false};
+  DB.clientes.forEach(c=>{
+    if(!Array.isArray(c.documentos)) c.documentos=[];
+    if(!Array.isArray(c.anotacoes)) c.anotacoes=[];
+    if(!Array.isArray(c.socios)) c.socios=[];
+    if(!c.endereco) c.endereco={cep:'',rua:'',numero:'',bairro:'',cidade:'',estado:''};
+  });
+}
 async function loadDB(){
   try{
     const resp=await fetch(FIREBASE_URL+'/'+STORE_KEY+'.json');
@@ -254,6 +269,7 @@ async function loadDB(){
     const data=await resp.json();
     if(!data) throw new Error('banco vazio');
     DB=data;
+    normalizeDB();
   }catch(e){
     console.error('erro ao carregar do Firebase',e);
     DB=defaultDB();
@@ -281,7 +297,7 @@ async function refreshFromCloud(){
   try{
     const resp=await fetch(FIREBASE_URL+'/'+STORE_KEY+'.json');
     const data=await resp.json();
-    if(data){ DB=data; render(); toast('Dados atualizados da nuvem.'); }
+    if(data){ DB=data; normalizeDB(); render(); toast('Dados atualizados da nuvem.'); }
   }catch(e){ toast('Não foi possível atualizar agora.'); }
 }
 function toast(msg){
