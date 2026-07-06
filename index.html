@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+
+    <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -142,7 +143,7 @@ table tr:hover td{background:#FAFAF7;}
       <a onclick="forgotPassword()">Esqueci minha senha</a>
       <a onclick="showSeedInfo()">Usuários de teste</a>
     </div>
-    <div class="login-hint">Este é um protótipo funcional. Os dados ficam salvos automaticamente. Usuários de teste: <b>admin / admin123</b> (Administrador), <b>consultor / 123456</b> (Consultor), <b>financeiro / 123456</b> (Financeiro).</div>
+    <div class="login-hint">Os dados ficam salvos na nuvem e sincronizados entre computadores. Usuários de teste: <b>admin / admin123</b> (Administrador), <b>consultor / 123456</b> (Consultor), <b>financeiro / 123456</b> (Financeiro).</div>
   </div>
 </div>
 
@@ -161,6 +162,7 @@ table tr:hover td{background:#FAFAF7;}
             <div class="avatar" id="user-avatar">A</div>
             <div><div id="user-name" style="font-weight:600;"></div><span class="role-badge" id="user-role"></span></div>
           </div>
+          <button class="btn-logout" onclick="refreshFromCloud()" title="Buscar dados mais recentes da nuvem">Atualizar</button>
           <button class="btn-logout" onclick="doLogout()">Sair</button>
         </div>
       </div>
@@ -171,6 +173,7 @@ table tr:hover td{background:#FAFAF7;}
 
 <script>
 const STORE_KEY='lc_gestao_db_v1';
+const FIREBASE_URL='https://lc-gestao-default-rtdb.firebaseio.com';
 let DB=null;
 let CURRENT_USER=null;
 let VIEW='dashboard';
@@ -246,10 +249,13 @@ function defaultDB(){
 
 async function loadDB(){
   try{
-    const raw=localStorage.getItem(STORE_KEY);
-    if(!raw) throw new Error('vazio');
-    DB=JSON.parse(raw);
+    const resp=await fetch(FIREBASE_URL+'/'+STORE_KEY+'.json');
+    if(!resp.ok) throw new Error('falha na conexão com o Firebase');
+    const data=await resp.json();
+    if(!data) throw new Error('banco vazio');
+    DB=data;
   }catch(e){
+    console.error('erro ao carregar do Firebase',e);
     DB=defaultDB();
     await saveDB();
   }
@@ -258,11 +264,25 @@ let saveTimer=null;
 function saveDB(){
   return new Promise((resolve)=>{
     clearTimeout(saveTimer);
-    saveTimer=setTimeout(()=>{
-      try{ localStorage.setItem(STORE_KEY, JSON.stringify(DB)); }catch(e){ console.error('erro ao salvar',e); }
-      resolve();
+    saveTimer=setTimeout(async ()=>{
+      try{
+        const resp=await fetch(FIREBASE_URL+'/'+STORE_KEY+'.json',{
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(DB)
+        });
+        if(!resp.ok) throw new Error('falha ao salvar no Firebase');
+        resolve(true);
+      }catch(e){ console.error('erro ao salvar',e); resolve(false); }
     },250);
   });
+}
+async function refreshFromCloud(){
+  try{
+    const resp=await fetch(FIREBASE_URL+'/'+STORE_KEY+'.json');
+    const data=await resp.json();
+    if(data){ DB=data; render(); toast('Dados atualizados da nuvem.'); }
+  }catch(e){ toast('Não foi possível atualizar agora.'); }
 }
 function toast(msg){
   const t=document.createElement('div'); t.className='toast'; t.textContent=msg;
@@ -493,8 +513,8 @@ function renderClienteDetail(focus){
     body=`<div>${e.rua}, ${e.numero} — ${e.bairro}<br>${e.cidade}/${e.estado} — CEP ${e.cep}</div>`;
   } else if(tab==='documentos'){
     body='<div class="toolbar"><div></div><button class="btn btn-sm" onclick="openDocForm(\''+c.id+'\')">+ Adicionar documento</button></div>'+
-      (c.documentos.length? '<div class="tablewrap"><table><thead><tr><th>Documento</th><th>Tipo</th><th>Data</th><th></th></tr></thead><tbody>'+
-        c.documentos.map(d=>`<tr><td>${escapeHtml(d.nome)}</td><td>${d.tipo}</td><td>${fmtDate(d.data)}</td><td><button class="icon-btn btn-danger" onclick="deleteDoc('${c.id}','${d.id}')">Remover</button></td></tr>`).join('')+
+      (c.documentos.length? '<div class="tablewrap"><table><thead><tr><th>Documento</th><th>Tipo</th><th>Data</th><th>Arquivo</th><th></th></tr></thead><tbody>'+
+        c.documentos.map(d=>`<tr><td>${escapeHtml(d.nome)}</td><td>${d.tipo}</td><td>${fmtDate(d.data)}</td><td>${d.dataUrl?'<a class="linkrow" style="text-decoration:none;" href="'+d.dataUrl+'" download="'+escapeHtml(d.nomeArquivo||d.nome)+'" target="_blank">Abrir / baixar</a>':'<span style="color:var(--ink-soft);">Sem arquivo</span>'}</td><td><button class="icon-btn btn-danger" onclick="deleteDoc('${c.id}','${d.id}')">Remover</button></td></tr>`).join('')+
         '</tbody></table></div>' : '<div class="empty">Nenhum documento anexado.</div>');
   } else if(tab==='obrigacoes'){
     const obs=DB.obrigacoes.filter(o=>o.clienteId===c.id);
@@ -585,14 +605,32 @@ function openDocForm(clienteId){
     <div class="field"><label>Nome do documento</label><input id="f-doc-nome" placeholder="Ex: Contrato Social 2026"></div>
     <div class="field"><label>Tipo</label><select id="f-doc-tipo">${['Contrato Social','Cartão CNPJ','Certificado Digital','Procuração','Contrato de Prestação de Serviços','Nota Fiscal','Outro'].map(t=>'<option>'+t+'</option>').join('')}</select></div>
     <div class="field"><label>Data</label><input id="f-doc-data" type="date" value="${todayISO()}"></div>
-    <div class="notice">Este protótipo armazena metadados do documento (nome, tipo, data). Upload de arquivos reais requer um servidor de armazenamento.</div>
+    <div class="field"><label>Arquivo (PDF, imagem ou Word — até 3 MB)</label><input id="f-doc-arquivo" type="file"></div>
+    <div class="notice">O arquivo fica salvo no navegador deste computador. Arquivos muito grandes podem não caber no armazenamento do navegador — se der erro ao salvar, tente um arquivo menor ou em PDF.</div>
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-gold" onclick="saveDoc('${clienteId}')">Salvar</button></div>`);
 }
 async function saveDoc(clienteId){
   const nome=document.getElementById('f-doc-nome').value; if(!nome){alert('Informe o nome do documento.');return;}
+  const tipo=document.getElementById('f-doc-tipo').value;
+  const data=document.getElementById('f-doc-data').value;
+  const fileInput=document.getElementById('f-doc-arquivo');
+  const file=fileInput.files[0];
   const c=DB.clientes.find(x=>x.id===clienteId);
-  c.documentos.push({id:uid('doc'),nome,tipo:document.getElementById('f-doc-tipo').value,data:document.getElementById('f-doc-data').value});
-  await saveDB(); closeModal(); render(); toast('Documento adicionado.');
+  if(file){
+    if(file.size>3*1024*1024){ alert('O arquivo escolhido tem mais de 3 MB. Escolha um arquivo menor.'); return; }
+    const reader=new FileReader();
+    reader.onload=async function(){
+      c.documentos.push({id:uid('doc'),nome,tipo,data,dataUrl:reader.result,nomeArquivo:file.name,tamanho:file.size});
+      const ok=await saveDB();
+      if(ok===false){ alert('Não foi possível salvar o arquivo (espaço do navegador esgotado). Tente um arquivo menor.'); return; }
+      closeModal(); render(); toast('Documento adicionado.');
+    };
+    reader.onerror=function(){ alert('Não foi possível ler o arquivo selecionado.'); };
+    reader.readAsDataURL(file);
+  } else {
+    c.documentos.push({id:uid('doc'),nome,tipo,data});
+    await saveDB(); closeModal(); render(); toast('Documento adicionado.');
+  }
 }
 async function deleteDoc(clienteId,docId){
   const c=DB.clientes.find(x=>x.id===clienteId);
@@ -832,8 +870,8 @@ function renderDocumentos(){
   return `
     <div class="section-title">Gestão de documentos</div>
     <div class="section-desc">Documentos organizados por cliente: contratos, balanços, certificados, notas fiscais e outros.</div>
-    <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Documento</th><th>Tipo</th><th>Data</th></tr></thead><tbody>
-    ${rows.length? rows.map(d=>`<tr><td class="linkrow" onclick="openCliente('${d.clienteId}')">${clienteNome(d.clienteId)}</td><td>${escapeHtml(d.nome)}</td><td>${d.tipo}</td><td>${fmtDate(d.data)}</td></tr>`).join('') : '<tr><td colspan="4"><div class="empty">Nenhum documento cadastrado.</div></td></tr>'}
+    <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Documento</th><th>Tipo</th><th>Data</th><th>Arquivo</th></tr></thead><tbody>
+    ${rows.length? rows.map(d=>`<tr><td class="linkrow" onclick="openCliente('${d.clienteId}')">${clienteNome(d.clienteId)}</td><td>${escapeHtml(d.nome)}</td><td>${d.tipo}</td><td>${fmtDate(d.data)}</td><td>${d.dataUrl?'<a class="linkrow" style="text-decoration:none;" href="'+d.dataUrl+'" download="'+escapeHtml(d.nomeArquivo||d.nome)+'" target="_blank">Abrir / baixar</a>':'<span style="color:var(--ink-soft);">Sem arquivo</span>'}</td></tr>`).join('') : '<tr><td colspan="5"><div class="empty">Nenhum documento cadastrado.</div></td></tr>'}
     </tbody></table></div>
     <div class="section-desc" style="margin-top:14px;">Para anexar um novo documento, abra o cliente e use a aba "Documentos".</div>
   `;
