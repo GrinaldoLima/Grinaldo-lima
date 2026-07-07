@@ -682,10 +682,10 @@ function renderFinanceiro(){
   const tabs=[['receber','Contas a receber'],['pagar','Contas a pagar'],['fluxo','Fluxo de caixa'],['relatorio','Relatórios']];
   let body='';
   if(sub==='receber'){
-    body=`<div class="toolbar"><div></div><div class="toolbar-left"><button class="btn" onclick="openAsaasImport()">Importar do Asaas</button><button class="btn btn-gold" onclick="openReceberForm()">+ Novo lançamento</button></div></div>
+    body=`<div class="toolbar"><div></div><button class="btn btn-gold" onclick="openReceberForm()">+ Novo lançamento</button></div>
     <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Descrição</th><th>Valor</th><th>Data</th><th>Forma</th><th>Situação</th><th></th></tr></thead><tbody>
     ${DB.receber.length? DB.receber.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(r=>`<tr>
-      <td>${clienteNome(r.clienteId)}</td><td>${escapeHtml(r.descricao)}${r.asaasId?' <span class="badge badge-blue" style="font-size:10px;">Asaas</span>':''}</td><td>${fmtMoney(r.valor)}</td><td>${fmtDate(r.data)}</td><td>${r.formaPagamento}</td>
+      <td>${clienteNome(r.clienteId)}</td><td>${escapeHtml(r.descricao)}</td><td>${fmtMoney(r.valor)}</td><td>${fmtDate(r.data)}</td><td>${r.formaPagamento}</td>
       <td>${statusBadge(r.situacao)}</td>
       <td>${r.situacao!=='pago'?'<button class="btn btn-sm" onclick="marcarPago(\''+r.id+'\')">Marcar pago</button>':''} <button class="icon-btn btn-danger" onclick="deleteReceber('${r.id}')">Excluir</button></td>
     </tr>`).join('') : '<tr><td colspan="7"><div class="empty">Nenhum lançamento.</div></td></tr>'}
@@ -771,73 +771,6 @@ function exportarFinanceiroCSV(){
   DB.receber.forEach(r=>rows.push(['Receita',r.descricao,r.valor,r.data,r.situacao]));
   DB.pagar.forEach(p=>rows.push(['Despesa',p.descricao,p.valor,p.data,p.situacao]));
   downloadCSV('relatorio-financeiro.csv',rows);
-}
-
-/* ---------- INTEGRAÇÃO ASAAS ---------- */
-function onlyDigits(s){ return (s||'').replace(/\D/g,''); }
-function asaasStatusToSituacao(status){
-  if(['RECEIVED','CONFIRMED','RECEIVED_IN_CASH'].includes(status)) return 'pago';
-  if(status==='OVERDUE') return 'atrasado';
-  return 'pendente';
-}
-function asaasBillingToForma(bt){
-  const map={BOLETO:'Boleto',PIX:'Pix',CREDIT_CARD:'Cartão',UNDEFINED:'A definir',TRANSFER:'Transferência',DEPOSIT:'Depósito'};
-  return map[bt]||bt||'—';
-}
-async function openAsaasImport(){
-  openModal(`<h2>Importar recebimentos do Asaas</h2><div id="asaas-modal-body"><div class="empty">Buscando cobranças no Asaas...</div></div>`);
-  try{
-    const resp=await fetch('/api/asaas');
-    const data=await resp.json();
-    if(!resp.ok){
-      document.getElementById('asaas-modal-body').innerHTML=`<div class="notice" style="background:var(--red-bg);color:var(--red);">Erro ao buscar no Asaas: ${escapeHtml(data.error||'desconhecido')}${data.detail?'<br><small>'+escapeHtml(String(data.detail).slice(0,200))+'</small>':''}</div><div class="modal-actions"><button class="btn" onclick="closeModal()">Fechar</button></div>`;
-      return;
-    }
-    const jaImportados=new Set(DB.receber.filter(r=>r.asaasId).map(r=>r.asaasId));
-    window._asaasPayments=data.payments||[];
-    if(window._asaasPayments.length===0){
-      document.getElementById('asaas-modal-body').innerHTML='<div class="empty">Nenhuma cobrança encontrada na sua conta Asaas.</div><div class="modal-actions"><button class="btn" onclick="closeModal()">Fechar</button></div>';
-      return;
-    }
-    const rowsHtml=window._asaasPayments.map((p,i)=>{
-      const jaTem=jaImportados.has(p.id);
-      return `<tr>
-        <td><input type="checkbox" data-idx="${i}" ${jaTem?'disabled':'checked'} class="asaas-check"></td>
-        <td>${escapeHtml(p.customerName)}</td>
-        <td>${fmtMoney(p.value)}</td>
-        <td>${fmtDate(p.dueDate)}</td>
-        <td>${statusBadge(asaasStatusToSituacao(p.status))}</td>
-        <td>${jaTem?'<span class="badge badge-gray">Já importado</span>':''}</td>
-      </tr>`;
-    }).join('');
-    document.getElementById('asaas-modal-body').innerHTML=`
-      <div class="notice">Encontramos ${window._asaasPayments.length} cobrança(s). Desmarque as que não quer importar. O sistema tenta associar automaticamente ao cliente pelo CNPJ/CPF cadastrado.</div>
-      <div class="tablewrap" style="max-height:320px;overflow-y:auto;"><table><thead><tr><th></th><th>Cliente (Asaas)</th><th>Valor</th><th>Vencimento</th><th>Status</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
-      <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-gold" onclick="confirmAsaasImport()">Importar selecionados</button></div>`;
-  }catch(e){
-    document.getElementById('asaas-modal-body').innerHTML=`<div class="notice" style="background:var(--red-bg);color:var(--red);">Não foi possível conectar ao Asaas. Verifique se a chave de API foi configurada no Vercel.</div><div class="modal-actions"><button class="btn" onclick="closeModal()">Fechar</button></div>`;
-  }
-}
-async function confirmAsaasImport(){
-  const checks=document.querySelectorAll('.asaas-check:checked');
-  let count=0;
-  checks.forEach(chk=>{
-    const p=window._asaasPayments[Number(chk.dataset.idx)];
-    if(!p) return;
-    let clienteId=null;
-    if(p.customerCpfCnpj){
-      const alvo=onlyDigits(p.customerCpfCnpj);
-      const found=DB.clientes.find(c=>onlyDigits(c.cnpj)===alvo);
-      if(found) clienteId=found.id;
-    }
-    DB.receber.push({
-      id:uid('rec'), clienteId, descricao:p.description||('Recebimento Asaas - '+p.customerName),
-      valor:p.value, data:p.dueDate, formaPagamento:asaasBillingToForma(p.billingType),
-      situacao:asaasStatusToSituacao(p.status), asaasId:p.id
-    });
-    count++;
-  });
-  await saveDB(); closeModal(); render(); toast(count+' recebimento(s) importado(s) do Asaas.');
 }
 
 /* ---------- OBRIGAÇÕES ---------- */
