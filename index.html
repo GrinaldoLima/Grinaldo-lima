@@ -261,6 +261,12 @@ function normalizeDB(){
     if(!Array.isArray(c.socios)) c.socios=[];
     if(!c.endereco) c.endereco={cep:'',rua:'',numero:'',bairro:'',cidade:'',estado:''};
   });
+  // Garante número sequencial de cliente para cadastros antigos que não possuem
+  let maxNum=DB.clientes.reduce((m,c)=>Math.max(m,Number(c.numero)||0),0);
+  DB.clientes.filter(c=>!c.numero).sort((a,b)=>(a.id>b.id?1:-1)).forEach(c=>{ maxNum++; c.numero=maxNum; });
+}
+function nextClienteNumero(){
+  return DB.clientes.reduce((m,c)=>Math.max(m,Number(c.numero)||0),0)+1;
 }
 async function loadDB(){
   try{
@@ -470,41 +476,97 @@ function renderDashboard(){
 /* ---------- CLIENTES ---------- */
 function renderClientes(){
   if(CLIENT_FOCUS) return renderClienteDetail(CLIENT_FOCUS);
-  const filtro=window._clienteFiltro||'';
+  const filtro=(window._clienteFiltro||'').trim();
   const status=window._clienteStatus||'todos';
+  const filtroNorm=filtro.toLowerCase();
+  const filtroDigits=onlyDigits(filtro);
   let list=DB.clientes.filter(c=>{
-    const okF=!filtro || (c.razaoSocial+c.nomeFantasia+c.cnpj).toLowerCase().includes(filtro.toLowerCase());
+    const texto=(String(c.numero||'')+' '+c.razaoSocial+' '+c.nomeFantasia+' '+c.cnpj).toLowerCase();
+    const okTexto=texto.includes(filtroNorm);
+    const okCnpj=filtroDigits.length>=3 && onlyDigits(c.cnpj).includes(filtroDigits);
+    const okF=!filtro || okTexto || okCnpj;
     const okS=status==='todos' || c.status===status;
     return okF && okS;
-  });
+  }).sort((a,b)=>(Number(a.numero)||0)-(Number(b.numero)||0));
   return `
     <div class="section-title">Clientes cadastrados</div>
     <div class="section-desc">Gerencie os dados cadastrais, responsáveis, documentos e histórico de cada cliente.</div>
     <div class="toolbar">
       <div class="toolbar-left">
-        <input class="search" placeholder="Buscar por razão social, fantasia ou CNPJ" value="${escapeHtml(filtro)}" oninput="window._clienteFiltro=this.value;render()" style="width:280px;">
+        <input class="search" placeholder="Buscar por número, nome ou CNPJ" value="${escapeHtml(filtro)}" oninput="window._clienteFiltro=this.value;render()" style="width:300px;">
         <select class="filter" onchange="window._clienteStatus=this.value;render()">
           <option value="todos" ${status==='todos'?'selected':''}>Todos os status</option>
           <option value="ativo" ${status==='ativo'?'selected':''}>Ativos</option>
           <option value="inativo" ${status==='inativo'?'selected':''}>Inativos</option>
         </select>
       </div>
-      <button class="btn btn-gold" onclick="openClienteForm()">+ Novo cliente</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn" onclick="imprimirRelacaoClientes()">&#128438; Imprimir relação</button>
+        <button class="btn btn-gold" onclick="openClienteForm()">+ Novo cliente</button>
+      </div>
     </div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Regime</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Nº</th><th>Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Regime</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${list.length? list.map(c=>`<tr>
+            <td>${c.numero||'-'}</td>
             <td class="linkrow" onclick="openCliente('${c.id}')">${escapeHtml(c.razaoSocial)}</td>
             <td>${escapeHtml(c.nomeFantasia)}</td><td>${c.cnpj}</td><td>${c.regime}</td>
             <td>${statusBadge(c.status)}</td>
             <td><button class="icon-btn" onclick="openClienteForm('${c.id}')" aria-label="Editar">Editar</button></td>
-          </tr>`).join('') : '<tr><td colspan="6"><div class="empty">Nenhum cliente encontrado.</div></td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="7"><div class="empty">Nenhum cliente encontrado.</div></td></tr>'}
         </tbody>
       </table>
     </div>
   `;
+}
+function imprimirRelacaoClientes(){
+  const filtro=(window._clienteFiltro||'').trim();
+  const status=window._clienteStatus||'todos';
+  const filtroNorm=filtro.toLowerCase();
+  const filtroDigits=onlyDigits(filtro);
+  let list=DB.clientes.filter(c=>{
+    const texto=(String(c.numero||'')+' '+c.razaoSocial+' '+c.nomeFantasia+' '+c.cnpj).toLowerCase();
+    const okTexto=texto.includes(filtroNorm);
+    const okCnpj=filtroDigits.length>=3 && onlyDigits(c.cnpj).includes(filtroDigits);
+    const okF=!filtro || okTexto || okCnpj;
+    const okS=status==='todos' || c.status===status;
+    return okF && okS;
+  }).sort((a,b)=>(Number(a.numero)||0)-(Number(b.numero)||0));
+  const dataHoje=new Date().toLocaleDateString('pt-BR');
+  const linhas=list.map(c=>`<tr>
+      <td>${c.numero||'-'}</td>
+      <td>${escapeHtml(c.razaoSocial)}</td>
+      <td>${escapeHtml(c.nomeFantasia||'')}</td>
+      <td>${c.cnpj||''}</td>
+      <td>${c.regime||''}</td>
+      <td>${c.status==='ativo'?'Ativo':'Inativo'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:20px;">Nenhum cliente encontrado.</td></tr>';
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+    <title>Relação de Clientes — ${(DB.config&&DB.config.logoTexto)||'Lima Consultoria'}</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#1E2430;margin:30px;}
+      h1{font-size:18px;margin:0 0 2px;}
+      .sub{font-size:12px;color:#5B6472;margin-bottom:18px;}
+      table{width:100%;border-collapse:collapse;font-size:12px;}
+      th,td{border:1px solid #D8DAD3;padding:6px 8px;text-align:left;}
+      th{background:#F2F2ED;}
+      tfoot td{font-size:11px;color:#5B6472;padding-top:10px;border:none;}
+      @media print{ body{margin:12mm;} }
+    </style></head>
+    <body>
+      <h1>Relação de Clientes</h1>
+      <div class="sub">${(DB.config&&DB.config.logoTexto)||'Lima Consultoria'} · Gerado em ${dataHoje} · ${list.length} cliente(s)${filtro?(' · Filtro: "'+filtro.replace(/</g,'&lt;')+'"'):''}${status!=='todos'?(' · Status: '+(status==='ativo'?'Ativos':'Inativos')):''}</div>
+      <table>
+        <thead><tr><th>Nº</th><th>Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Regime</th><th>Status</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+      <script>window.onload=function(){window.print();};<\/script>
+    </body></html>`;
+  const w=window.open('','_blank');
+  if(!w){ alert('Habilite pop-ups para imprimir a relação de clientes.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 function openCliente(id){ CLIENT_FOCUS={id:id, tab:'dados'}; render(); }
 function renderClienteDetail(focus){
@@ -547,7 +609,7 @@ function renderClienteDetail(focus){
   }
   return `
     <div class="linkrow" onclick="CLIENT_FOCUS=null;render()" style="margin-bottom:10px;">← Voltar para clientes</div>
-    <div class="section-title">${escapeHtml(c.nomeFantasia||c.razaoSocial)}</div>
+    <div class="section-title">Nº ${c.numero||'-'} · ${escapeHtml(c.nomeFantasia||c.razaoSocial)}</div>
     <div class="section-desc">${c.cnpj} · ${statusBadge(c.status)}</div>
     <div class="tabs">${tabs.map(t=>'<div class="tab'+(tab===t[0]?' active':'')+'" onclick="CLIENT_FOCUS.tab=\''+t[0]+'\';render()">'+t[1]+'</div>').join('')}</div>
     <div class="card">${body}</div>
@@ -558,6 +620,7 @@ function openClienteForm(id){
   openModal(`
     <h2>${c?'Editar cliente':'Novo cliente'}</h2>
     <div class="form-row">
+      <div class="field"><label>Nº do cliente</label><input id="f-numero" type="number" value="${c?c.numero:nextClienteNumero()}"></div>
       <div class="field"><label>Razão social</label><input id="f-razao" value="${c?escapeHtml(c.razaoSocial):''}"></div>
       <div class="field"><label>Nome fantasia</label><input id="f-fantasia" value="${c?escapeHtml(c.nomeFantasia):''}"></div>
       <div class="field"><label>CNPJ</label><input id="f-cnpj" value="${c?c.cnpj:''}" placeholder="00.000.000/0000-00"></div>
@@ -598,7 +661,11 @@ function openClienteForm(id){
 }
 async function saveCliente(id){
   const val=(id)=>document.getElementById(id).value;
+  const numeroInformado=Number(val('f-numero'))||nextClienteNumero();
+  const duplicado=DB.clientes.some(c=>Number(c.numero)===numeroInformado && c.id!==id);
+  if(duplicado){ alert('Já existe um cliente cadastrado com este número. Escolha outro número.'); return; }
   const data={
+    numero:numeroInformado,
     razaoSocial:val('f-razao'), nomeFantasia:val('f-fantasia'), cnpj:val('f-cnpj'), regime:val('f-regime'),
     ie:val('f-ie'), im:val('f-im'), cnae:val('f-cnae'), dataAbertura:val('f-abertura'), capitalSocial:val('f-capital'),
     status:val('f-status'),
