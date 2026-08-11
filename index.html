@@ -561,11 +561,28 @@ function imprimirRelacaoClientes(){
         <thead><tr><th>Nº</th><th>Razão social</th><th>CNPJ</th><th>Regime</th><th>Status</th></tr></thead>
         <tbody>${linhas}</tbody>
       </table>
-      <script>window.onload=function(){window.print();};<\/script>
     </body></html>`;
-  const w=window.open('','_blank');
-  if(!w){ alert('Habilite pop-ups para imprimir a relação de clientes.'); return; }
-  w.document.open(); w.document.write(html); w.document.close();
+  let frame=document.getElementById('print-frame');
+  if(frame) frame.remove();
+  frame=document.createElement('iframe');
+  frame.id='print-frame';
+  frame.style.position='fixed';
+  frame.style.right='0';
+  frame.style.bottom='0';
+  frame.style.width='0';
+  frame.style.height='0';
+  frame.style.border='0';
+  document.body.appendChild(frame);
+  const doc=frame.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  frame.onload=function(){
+    try{
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    }catch(e){
+      alert('Não foi possível abrir a impressão. Tente novamente.');
+    }
+  };
 }
 function openCliente(id){ CLIENT_FOCUS={id:id, tab:'dados'}; render(); }
 function renderClienteDetail(focus){
