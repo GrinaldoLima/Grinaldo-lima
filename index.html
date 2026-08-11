@@ -481,7 +481,7 @@ function renderClientes(){
   const filtroNorm=filtro.toLowerCase();
   const filtroDigits=onlyDigits(filtro);
   let list=DB.clientes.filter(c=>{
-    const texto=(String(c.numero||'')+' '+c.razaoSocial+' '+c.nomeFantasia+' '+c.cnpj).toLowerCase();
+    const texto=(String(c.numero||'')+' '+c.razaoSocial+' '+c.cnpj).toLowerCase();
     const okTexto=texto.includes(filtroNorm);
     const okCnpj=filtroDigits.length>=3 && onlyDigits(c.cnpj).includes(filtroDigits);
     const okF=!filtro || okTexto || okCnpj;
@@ -507,15 +507,15 @@ function renderClientes(){
     </div>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Nº</th><th>Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Regime</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Nº</th><th>Razão social</th><th>CNPJ</th><th>Regime</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${list.length? list.map(c=>`<tr>
             <td>${c.numero||'-'}</td>
             <td class="linkrow" onclick="openCliente('${c.id}')">${escapeHtml(c.razaoSocial)}</td>
-            <td>${escapeHtml(c.nomeFantasia)}</td><td>${c.cnpj}</td><td>${c.regime}</td>
+            <td>${c.cnpj}</td><td>${c.regime}</td>
             <td>${statusBadge(c.status)}</td>
             <td><button class="icon-btn" onclick="openClienteForm('${c.id}')" aria-label="Editar">Editar</button></td>
-          </tr>`).join('') : '<tr><td colspan="7"><div class="empty">Nenhum cliente encontrado.</div></td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="6"><div class="empty">Nenhum cliente encontrado.</div></td></tr>'}
         </tbody>
       </table>
     </div>
@@ -527,7 +527,7 @@ function imprimirRelacaoClientes(){
   const filtroNorm=filtro.toLowerCase();
   const filtroDigits=onlyDigits(filtro);
   let list=DB.clientes.filter(c=>{
-    const texto=(String(c.numero||'')+' '+c.razaoSocial+' '+c.nomeFantasia+' '+c.cnpj).toLowerCase();
+    const texto=(String(c.numero||'')+' '+c.razaoSocial+' '+c.cnpj).toLowerCase();
     const okTexto=texto.includes(filtroNorm);
     const okCnpj=filtroDigits.length>=3 && onlyDigits(c.cnpj).includes(filtroDigits);
     const okF=!filtro || okTexto || okCnpj;
@@ -538,11 +538,10 @@ function imprimirRelacaoClientes(){
   const linhas=list.map(c=>`<tr>
       <td>${c.numero||'-'}</td>
       <td>${escapeHtml(c.razaoSocial)}</td>
-      <td>${escapeHtml(c.nomeFantasia||'')}</td>
       <td>${c.cnpj||''}</td>
       <td>${c.regime||''}</td>
       <td>${c.status==='ativo'?'Ativo':'Inativo'}</td>
-    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;padding:20px;">Nenhum cliente encontrado.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;padding:20px;">Nenhum cliente encontrado.</td></tr>';
   const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
     <title>Relação de Clientes — ${(DB.config&&DB.config.logoTexto)||'Lima Consultoria'}</title>
     <style>
@@ -559,7 +558,7 @@ function imprimirRelacaoClientes(){
       <h1>Relação de Clientes</h1>
       <div class="sub">${(DB.config&&DB.config.logoTexto)||'Lima Consultoria'} · Gerado em ${dataHoje} · ${list.length} cliente(s)${filtro?(' · Filtro: "'+filtro.replace(/</g,'&lt;')+'"'):''}${status!=='todos'?(' · Status: '+(status==='ativo'?'Ativos':'Inativos')):''}</div>
       <table>
-        <thead><tr><th>Nº</th><th>Razão social</th><th>Fantasia</th><th>CNPJ</th><th>Regime</th><th>Status</th></tr></thead>
+        <thead><tr><th>Nº</th><th>Razão social</th><th>CNPJ</th><th>Regime</th><th>Status</th></tr></thead>
         <tbody>${linhas}</tbody>
       </table>
       <script>window.onload=function(){window.print();};<\/script>
@@ -622,7 +621,6 @@ function openClienteForm(id){
     <div class="form-row">
       <div class="field"><label>Nº do cliente</label><input id="f-numero" type="number" value="${c?c.numero:nextClienteNumero()}"></div>
       <div class="field"><label>Razão social</label><input id="f-razao" value="${c?escapeHtml(c.razaoSocial):''}"></div>
-      <div class="field"><label>Nome fantasia</label><input id="f-fantasia" value="${c?escapeHtml(c.nomeFantasia):''}"></div>
       <div class="field"><label>CNPJ</label><input id="f-cnpj" value="${c?c.cnpj:''}" placeholder="00.000.000/0000-00"></div>
       <div class="field"><label>Regime tributário</label>
         <select id="f-regime">
@@ -666,7 +664,7 @@ async function saveCliente(id){
   if(duplicado){ alert('Já existe um cliente cadastrado com este número. Escolha outro número.'); return; }
   const data={
     numero:numeroInformado,
-    razaoSocial:val('f-razao'), nomeFantasia:val('f-fantasia'), cnpj:val('f-cnpj'), regime:val('f-regime'),
+    razaoSocial:val('f-razao'), cnpj:val('f-cnpj'), regime:val('f-regime'),
     ie:val('f-ie'), im:val('f-im'), cnae:val('f-cnae'), dataAbertura:val('f-abertura'), capitalSocial:val('f-capital'),
     status:val('f-status'),
     socios:[{nome:val('f-s-nome'),cpf:val('f-s-cpf'),tel:val('f-s-tel'),whatsapp:val('f-s-whats'),email:val('f-s-email')}],
@@ -1057,8 +1055,8 @@ function renderRelatorios(){
   `;
 }
 function exportarClientesCSV(){
-  const rows=[['Razão social','Fantasia','CNPJ','Regime','Status']];
-  DB.clientes.forEach(c=>rows.push([c.razaoSocial,c.nomeFantasia,c.cnpj,c.regime,c.status]));
+  const rows=[['Nº','Razão social','CNPJ','Regime','Status']];
+  DB.clientes.forEach(c=>rows.push([c.numero,c.razaoSocial,c.cnpj,c.regime,c.status]));
   downloadCSV('clientes.csv',rows);
 }
 function exportarObrigacoesCSV(){
