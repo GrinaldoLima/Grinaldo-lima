@@ -760,10 +760,28 @@ async function saveNote(clienteId){
 
 /* ---------- FINANCEIRO ---------- */
 function renderFinanceiro(){
-  const sub=window._finTab||'receber';
-  const tabs=[['receber','Contas a receber'],['pagar','Contas a pagar'],['fluxo','Fluxo de caixa'],['relatorio','Relatórios']];
+  const sub=window._finTab||'resumo';
+  const tabs=[['resumo','Resumo'],['receber','Contas a receber'],['pagar','Contas a pagar'],['fluxo','Fluxo de caixa'],['relatorio','Relatórios']];
   let body='';
-  if(sub==='receber'){
+  if(sub==='resumo'){
+    const totalReceberGeral=DB.receber.reduce((s,r)=>s+Number(r.valor),0);
+    const totalReceberAberto=DB.receber.filter(r=>r.situacao!=='pago').reduce((s,r)=>s+Number(r.valor),0);
+    const totalReceberAtrasado=DB.receber.filter(r=>r.situacao==='atrasado').reduce((s,r)=>s+Number(r.valor),0);
+    const totalPagarGeral=DB.pagar.reduce((s,p)=>s+Number(p.valor),0);
+    const totalPagarAberto=DB.pagar.filter(p=>p.situacao!=='pago').reduce((s,p)=>s+Number(p.valor),0);
+    const saldoGeral=totalReceberGeral-totalPagarGeral;
+    body=`<div class="grid g3" style="margin-bottom:18px;">
+      <div class="metric"><div class="label">Total contas a receber</div><div class="value" style="color:var(--green);">${fmtMoney(totalReceberGeral)}</div><div class="sub">${DB.receber.length} lançamento(s)</div></div>
+      <div class="metric"><div class="label">Total contas a pagar</div><div class="value" style="color:var(--red);">${fmtMoney(totalPagarGeral)}</div><div class="sub">${DB.pagar.length} lançamento(s)</div></div>
+      <div class="metric"><div class="label">Saldo (receber - pagar)</div><div class="value">${fmtMoney(saldoGeral)}</div></div>
+    </div>
+    <div class="grid g3" style="margin-bottom:18px;">
+      <div class="metric"><div class="label">A receber em aberto</div><div class="value">${fmtMoney(totalReceberAberto)}</div><div class="sub">pendente + atrasado</div></div>
+      <div class="metric"><div class="label">A receber atrasado</div><div class="value" style="color:var(--red);">${fmtMoney(totalReceberAtrasado)}</div></div>
+      <div class="metric"><div class="label">A pagar em aberto</div><div class="value">${fmtMoney(totalPagarAberto)}</div><div class="sub">pendente</div></div>
+    </div>
+    <div class="section-desc">Resumo geral dos valores lançados em contas a receber e contas a pagar.</div>`;
+  } else if(sub==='receber'){
     body=`<div class="toolbar"><div></div><div class="toolbar-left"><button class="btn" onclick="openAsaasImport()">Importar do Asaas</button><button class="btn btn-gold" onclick="openReceberForm()">+ Novo lançamento</button></div></div>
     <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Descrição</th><th>Valor</th><th>Data</th><th>Forma</th><th>Situação</th><th></th></tr></thead><tbody>
     ${DB.receber.length? DB.receber.slice().sort((a,b)=>b.data.localeCompare(a.data)).map(r=>`<tr>
