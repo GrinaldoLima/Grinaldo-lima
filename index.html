@@ -177,6 +177,7 @@ let DB=null;
 let CURRENT_USER=null;
 let VIEW='dashboard';
 let CLIENT_FOCUS=null;
+let REGISTRO_FOCUS=null;
 
 function uid(p){return p+'_'+Math.random().toString(36).slice(2,9);}
 function todayISO(){return new Date().toISOString().slice(0,10);}
@@ -236,6 +237,7 @@ function defaultDB(){
       {id:uid('crm'),clienteId:c1,tipo:'Reunião',data:'2026-06-02',descricao:'Reunião de abertura do semestre, revisão de obrigações pendentes.'},
       {id:uid('crm'),clienteId:c2,tipo:'Proposta',data:'2026-05-20',descricao:'Enviada proposta de consultoria tributária adicional.'}
     ],
+    registros:[],
     config:{
       logoTexto:'Lima Consultoria',
       assinaturaEmail:'Atenciosamente,\nEquipe Lima Consultoria\n(11) 4000-0000',
@@ -253,6 +255,8 @@ function normalizeDB(){
   if(!Array.isArray(DB.obrigacoes)) DB.obrigacoes=[];
   if(!Array.isArray(DB.agenda)) DB.agenda=[];
   if(!Array.isArray(DB.crm)) DB.crm=[];
+  if(!Array.isArray(DB.registros)) DB.registros=[];
+  DB.registros.forEach(r=>{ if(!Array.isArray(r.tasks)) r.tasks=[]; });
   if(!Array.isArray(DB.usuarios)) DB.usuarios=[];
   if(!DB.config) DB.config={logoTexto:'Lima Consultoria',assinaturaEmail:'',diasAlerta:5,whatsappAtivo:false,emailAtivo:false};
   DB.clientes.forEach(c=>{
@@ -346,6 +350,7 @@ function showSeedInfo(){
 const NAV_ITEMS=[
   {id:'dashboard',label:'Dashboard',icon:'&#9670;'},
   {id:'clientes',label:'Clientes',icon:'&#128100;'},
+  {id:'registro',label:'Registro de Empresas',icon:'&#127970;'},
   {id:'financeiro',label:'Financeiro',icon:'&#128176;'},
   {id:'obrigacoes',label:'Obrigações',icon:'&#128203;'},
   {id:'agenda',label:'Agenda',icon:'&#128197;'},
@@ -367,16 +372,16 @@ function buildNav(){
   });
 }
 function navigate(view){
-  VIEW=view; CLIENT_FOCUS=null;
+  VIEW=view; CLIENT_FOCUS=null; REGISTRO_FOCUS=null;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const active=document.getElementById('nav-'+view); if(active) active.classList.add('active');
-  const titles={dashboard:'Dashboard',clientes:'Clientes',financeiro:'Área Financeira',obrigacoes:'Controle de Obrigações',agenda:'Agenda',crm:'CRM',documentos:'Gestão de Documentos',relatorios:'Relatórios',config:'Configurações'};
+  const titles={dashboard:'Dashboard',clientes:'Clientes',registro:'Registro de Empresas',financeiro:'Área Financeira',obrigacoes:'Controle de Obrigações',agenda:'Agenda',crm:'CRM',documentos:'Gestão de Documentos',relatorios:'Relatórios',config:'Configurações'};
   document.getElementById('page-title').textContent=titles[view]||'';
   render();
 }
 function render(){
   const c=document.getElementById('content');
-  const map={dashboard:renderDashboard,clientes:renderClientes,financeiro:renderFinanceiro,obrigacoes:renderObrigacoes,agenda:renderAgenda,crm:renderCRM,documentos:renderDocumentos,relatorios:renderRelatorios,config:renderConfig};
+  const map={dashboard:renderDashboard,clientes:renderClientes,registro:renderRegistro,financeiro:renderFinanceiro,obrigacoes:renderObrigacoes,agenda:renderAgenda,crm:renderCRM,documentos:renderDocumentos,relatorios:renderRelatorios,config:renderConfig};
   c.innerHTML = map[VIEW] ? map[VIEW]() : '<div class="empty">Seção não encontrada.</div>';
 }
 
@@ -999,6 +1004,183 @@ async function saveObrigacao(){
 }
 async function updateObgStatus(id,status){ const o=DB.obrigacoes.find(x=>x.id===id); o.status=status; await saveDB(); render(); }
 async function deleteObrigacao(id){ if(!confirm('Excluir esta obrigação?'))return; DB.obrigacoes=DB.obrigacoes.filter(x=>x.id!==id); await saveDB(); render(); }
+
+/* ---------- REGISTRO DE EMPRESAS ---------- */
+const REG_STATUS_OPTIONS=['Pendente','Em andamento','Concluído','Atrasado'];
+const REG_TIPOS=['MEI (Microempreendedor Individual)','Empresário Individual','EIRELI / Sociedade Limitada Unipessoal','Sociedade Limitada (LTDA)','Sociedade Anônima (S.A.)','Sociedade Simples (atividade não empresarial)'];
+function regDefaultTasks(tipo){
+  const isMEI = tipo === 'MEI (Microempreendedor Individual)';
+  const isSimples = tipo === 'Sociedade Simples (atividade não empresarial)';
+  const isUnipessoal = tipo === 'Empresário Individual' || tipo === 'EIRELI / Sociedade Limitada Unipessoal';
+  const orgaoRegistro = isSimples ? 'Cartório de Registro Civil de Pessoas Jurídicas' : 'Junta Comercial (JUCESP ou da UF da sede)';
+  const atoNome = isUnipessoal ? 'Ato Constitutivo / Requerimento de Empresário' : 'Contrato Social';
+  let base;
+  if(isMEI){
+    base=[
+      ['1. Planejamento','Confirmar enquadramento como MEI (faturamento até o teto anual, atividade permitida, sem outra empresa)','Consulta CNAE permitido para MEI','Empreendedor','1 dia',''],
+      ['1. Planejamento','Reunir documentos pessoais (RG, CPF, comprovante de endereço, título de eleitor)','RG, CPF, comprovante de endereço','Empreendedor','1 dia',''],
+      ['2. Formalização','Realizar cadastro no Portal do Empreendedor (gov.br)','Acesso gov.br','Lima Consultoria','1 dia','gov.br/empresas-e-negocios/pt-br/empreendedor'],
+      ['2. Formalização','Preencher dados da atividade, endereço e capital social','Dados do negócio','Lima Consultoria','1 dia',''],
+      ['2. Formalização','Emitir o CCMEI (Certificado da Condição de MEI)','CCMEI','Lima Consultoria','Imediato','Contém CNPJ e inscrições quando aplicável'],
+      ['3. Enquadramento Tributário','Confirmar enquadramento no Simples Nacional (automático para MEI)','N/A','Lima Consultoria','Automático',''],
+      ['4. Município/Estado','Verificar necessidade de licença de funcionamento ou alvará simplificado','Alvará / dispensa','Lima Consultoria','Varia por município',''],
+      ['5. Pós-abertura','Abrir conta bancária PJ','CCMEI + documentos pessoais','Empreendedor','3-5 dias',''],
+      ['5. Pós-abertura','Configurar emissão de notas fiscais (se aplicável à atividade)','Acesso ao sistema municipal/estadual','Lima Consultoria','2-3 dias',''],
+      ['5. Pós-abertura','Providenciar certificado digital, se necessário','Certificado digital','Lima Consultoria','1-3 dias',''],
+      ['5. Pós-abertura','Agendar entrega da DASN-SIMEI (declaração anual)','N/A — controle de prazo','Lima Consultoria','Anual (até 31/05)','']
+    ];
+  } else {
+    base=[
+      ['1. Planejamento','Definir a atividade principal e atividades secundárias (CNAE)','Lista de CNAEs pretendidos','Cliente','1-2 dias',''],
+      ['1. Planejamento', isUnipessoal?'Definir capital social e titularidade':'Definir sócios, participação societária e capital social', isUnipessoal?'Dados do titular':'Dados dos sócios','Cliente','1-2 dias',''],
+      ['1. Planejamento','Definir endereço da sede (comercial, residencial ou virtual)','Comprovante de endereço','Cliente','1 dia','Verificar restrições municipais para endereço residencial'],
+      ['2. Viabilidade e Nome','Realizar consulta de viabilidade do nome empresarial e do endereço','Acesso gov.br Empresa Fácil/REDESIM','Lima Consultoria','1-2 dias','Verifica Junta Comercial, Prefeitura e vigilância sanitária, quando aplicável'],
+      ['2. Viabilidade e Nome','Imprimir/baixar protocolo de viabilidade','Protocolo REDESIM','Lima Consultoria','Mesmo dia',''],
+      ['3. '+atoNome,'Redigir o '+atoNome,'Minuta do '+atoNome,'Lima Consultoria','2-5 dias', isSimples?'Seguir normas do Cartório de Registro Civil de PJ':''],
+      ['3. '+atoNome,'Coletar dados cadastrais atualizados dos sócios/titular (endereço, e-mail, estado civil)','RG, CPF, comprovante de endereço','Cliente','2 dias',''],
+      ['3. '+atoNome,'Assinar o '+atoNome+' (físico ou eletronicamente)','Documento assinado','Cliente','1-3 dias', isSimples?'':'Testemunhas exigidas conforme regra do órgão de registro'],
+      ['4. Registro','Protocolar o registro no '+orgaoRegistro, atoNome+' + documentos pessoais','Lima Consultoria','1 dia',''],
+      ['4. Registro','Pagar taxas de registro (DARE/GARE + taxas do órgão)','Guia/comprovante de pagamento','Cliente','1 dia','Valor varia conforme UF/órgão'],
+      ['4. Registro','Aguardar deferimento do registro','N/A — acompanhamento no portal','Lima Consultoria','3-10 dias úteis','Prazo varia por órgão e demanda'],
+      ['4. Registro','Baixar o '+atoNome+' registrado/arquivado','Documento registrado com número de protocolo','Lima Consultoria','1 dia',''],
+      ['5. Receita Federal','Preencher e transmitir o DBE (Documento Básico de Entrada), quando exigido','DBE via Redesim','Lima Consultoria','1 dia','Validação pode levar 60+ min'],
+      ['5. Receita Federal','Obter CNPJ','Comprovante de Inscrição CNPJ','Lima Consultoria','1-5 dias úteis',''],
+      ['6. Enquadramento Tributário','Definir regime tributário (Simples Nacional, Lucro Presumido ou Lucro Real)','Simulação tributária','Lima Consultoria','2 dias',''],
+      ['6. Enquadramento Tributário','Realizar opção pelo Simples Nacional, se aplicável','Código de acesso e-CAC','Lima Consultoria','Conforme prazo legal',''],
+      ['7. Município/Estado','Verificar necessidade de licenciamento/alvará junto à Prefeitura','Alvará de funcionamento','Lima Consultoria','Varia por município',''],
+      ['7. Município/Estado','Realizar inscrição municipal e/ou estadual (ISS/ICMS, conforme atividade)','Inscrição municipal/estadual','Lima Consultoria','Varia por município/UF',''],
+      ['8. Pós-abertura','Abrir conta bancária PJ','CNPJ + ato registrado + documentos','Cliente','3-5 dias',''],
+      ['8. Pós-abertura','Configurar emissão de notas fiscais (NF-e, NFS-e, conforme atividade)','Acesso ao sistema municipal/estadual','Lima Consultoria','2-3 dias',''],
+      ['8. Pós-abertura','Providenciar certificado digital e-CNPJ','Certificado digital','Lima Consultoria','1-3 dias','']
+    ];
+  }
+  return base.map((t,i)=>({id:'rt'+(i+1),phase:t[0],title:t[1],doc:t[2],resp:t[3],prazo:t[4],obs:t[5],status:'Pendente',dataConclusao:'',note:''}));
+}
+function regProgress(r){
+  const total=r.tasks.length;
+  const done=r.tasks.filter(t=>t.status==='Concluído').length;
+  return {total,done,pct: total? Math.round((done/total)*100) : 0};
+}
+function renderRegistro(){
+  if(REGISTRO_FOCUS) return renderRegistroDetail(REGISTRO_FOCUS);
+  const list=DB.registros.slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  return `
+    <div class="section-title">Registro de Empresas</div>
+    <div class="section-desc">Checklist de abertura de sociedade empresarial — acompanhamento por cliente, do planejamento ao pós-abertura.</div>
+    <div class="toolbar"><div></div><button class="btn btn-gold" onclick="openRegistroForm()">+ Novo registro</button></div>
+    <div class="tablewrap"><table><thead><tr><th>Cliente / Sociedade</th><th>Sede</th><th>Tipo</th><th>Progresso</th><th></th></tr></thead><tbody>
+    ${list.length? list.map(r=>{
+      const p=regProgress(r);
+      return `<tr>
+        <td class="linkrow" onclick="openRegistro('${r.id}')">${escapeHtml(r.nome)}</td>
+        <td>${escapeHtml(r.sede||'-')}</td>
+        <td>${escapeHtml(r.tipo)}</td>
+        <td style="min-width:160px;"><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;height:8px;background:#EEEFEA;border-radius:6px;overflow:hidden;"><div style="height:100%;width:${p.pct}%;background:var(--gold);"></div></div><span style="font-size:12px;color:var(--ink-soft);">${p.pct}%</span></div></td>
+        <td><button class="icon-btn" onclick="openRegistroForm('${r.id}')">Editar</button><button class="icon-btn btn-danger" onclick="deleteRegistro('${r.id}')">Excluir</button></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5"><div class="empty">Nenhum registro de abertura cadastrado.</div></td></tr>'}
+    </tbody></table></div>
+  `;
+}
+function openRegistro(id){ REGISTRO_FOCUS={id:id}; render(); }
+function renderRegistroDetail(focus){
+  const r=DB.registros.find(x=>x.id===focus.id);
+  if(!r){ REGISTRO_FOCUS=null; return renderRegistro(); }
+  const p=regProgress(r);
+  const andamento=r.tasks.filter(t=>t.status==='Em andamento').length;
+  const atrasado=r.tasks.filter(t=>t.status==='Atrasado').length;
+  const phases=[...new Set(r.tasks.map(t=>t.phase))];
+  const phasesHtml=phases.map(phase=>{
+    const tasks=r.tasks.filter(t=>t.phase===phase);
+    const doneCount=tasks.filter(t=>t.status==='Concluído').length;
+    return `<div style="margin-top:22px;">
+      <div style="display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--navy);padding-bottom:6px;margin-bottom:10px;">
+        <div class="serif" style="font-size:17px;color:var(--navy);font-weight:600;">${escapeHtml(phase)}</div>
+        <div style="font-size:12px;color:var(--ink-soft);">${doneCount}/${tasks.length} concluídas</div>
+      </div>
+      ${tasks.map(t=>`
+        <div class="card" style="margin-bottom:10px;display:grid;grid-template-columns:1fr 170px;gap:14px;align-items:start;border-left:4px solid ${t.status==='Concluído'?'var(--green)':t.status==='Em andamento'?'var(--amber)':t.status==='Atrasado'?'var(--red)':'var(--line)'};">
+          <div>
+            <div style="font-weight:600;font-size:14px;${t.status==='Concluído'?'text-decoration:line-through;color:var(--ink-soft);':''}">${escapeHtml(t.title)}</div>
+            <div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px;"><b style="color:var(--ink);">Documento:</b> ${escapeHtml(t.doc)}</div>
+            <div style="display:flex;gap:8px;margin-top:6px;">
+              <span class="badge badge-gray">${escapeHtml(t.resp)}</span>
+              <span class="badge badge-gray">${escapeHtml(t.prazo)}</span>
+            </div>
+            <textarea placeholder="Observações..." style="width:100%;margin-top:8px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:32px;" onchange="updateRegTaskNote('${r.id}','${t.id}',this.value)">${escapeHtml(t.note||t.obs||'')}</textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <select style="font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;" onchange="updateRegTaskStatus('${r.id}','${t.id}',this.value)">
+              ${REG_STATUS_OPTIONS.map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}
+            </select>
+            <input type="date" style="font-size:11.5px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;" value="${t.dataConclusao||''}" onchange="updateRegTaskDate('${r.id}','${t.id}',this.value)">
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  }).join('');
+  return `
+    <div class="linkrow" onclick="REGISTRO_FOCUS=null;render()" style="margin-bottom:10px;">← Voltar para Registro de Empresas</div>
+    <div class="section-title">${escapeHtml(r.nome)}</div>
+    <div class="section-desc">${escapeHtml(r.sede||'-')} · ${escapeHtml(r.tipo)}</div>
+    <div class="card" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+      <div class="serif" style="font-size:34px;color:var(--navy);font-weight:700;">${p.pct}<span style="font-size:15px;color:var(--ink-soft);"> %</span></div>
+      <div style="flex:1;min-width:200px;height:10px;background:#EEEFEA;border-radius:6px;overflow:hidden;"><div style="height:100%;width:${p.pct}%;background:linear-gradient(90deg,var(--gold) 0%,var(--navy) 100%);"></div></div>
+      <span class="badge badge-green">${p.done} concluídas</span>
+      <span class="badge badge-amber">${andamento} em andamento</span>
+      <span class="badge badge-red">${atrasado} atrasadas</span>
+      <span class="badge badge-gray">${p.total} etapas no total</span>
+    </div>
+    ${phasesHtml}
+  `;
+}
+function openRegistroForm(id){
+  const r=id? DB.registros.find(x=>x.id===id) : null;
+  openModal(`
+    <h2>${r?'Editar registro':'Novo registro de abertura'}</h2>
+    <div class="form-row">
+      <div class="field"><label>Cliente / Nome da sociedade</label><input id="f-reg-nome" value="${r?escapeHtml(r.nome):''}" placeholder="Ex: Dr. João Pereira"></div>
+      <div class="field"><label>Sede (Município/UF)</label><input id="f-reg-sede" value="${r?escapeHtml(r.sede||''):'Suzano/SP'}" placeholder="Ex: Suzano/SP"></div>
+    </div>
+    <div class="field"><label>Tipo de empresa</label><select id="f-reg-tipo">${REG_TIPOS.map(t=>'<option '+(r&&r.tipo===t?'selected':(!r&&t==='Sociedade Limitada (LTDA)'?'selected':''))+'>'+t+'</option>').join('')}</select></div>
+    ${r?'<div class="notice">Se você mudar o tipo de empresa, o checklist de etapas será recriado do zero para o novo tipo.</div>':''}
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-gold" onclick="saveRegistro('${r?r.id:''}')">Salvar</button></div>
+  `);
+}
+async function saveRegistro(id){
+  const nome=document.getElementById('f-reg-nome').value.trim()||'Cliente sem nome';
+  const sede=document.getElementById('f-reg-sede').value.trim();
+  const tipo=document.getElementById('f-reg-tipo').value;
+  if(id){
+    const r=DB.registros.find(x=>x.id===id);
+    const tipoChanged=r.tipo!==tipo;
+    r.nome=nome; r.sede=sede; r.tipo=tipo;
+    if(tipoChanged) r.tasks=regDefaultTasks(tipo);
+  } else {
+    DB.registros.push({id:uid('reg'),nome,sede,tipo,tasks:regDefaultTasks(tipo)});
+  }
+  await saveDB(); closeModal(); render(); toast('Registro salvo.');
+}
+async function deleteRegistro(id){
+  if(!confirm('Excluir este registro de abertura? Esta ação não pode ser desfeita.'))return;
+  DB.registros=DB.registros.filter(x=>x.id!==id);
+  if(REGISTRO_FOCUS && REGISTRO_FOCUS.id===id) REGISTRO_FOCUS=null;
+  await saveDB(); render(); toast('Registro excluído.');
+}
+async function updateRegTaskStatus(regId,taskId,status){
+  const r=DB.registros.find(x=>x.id===regId); const t=r.tasks.find(x=>x.id===taskId);
+  t.status=status;
+  if(status==='Concluído' && !t.dataConclusao) t.dataConclusao=todayISO();
+  await saveDB(); render();
+}
+async function updateRegTaskDate(regId,taskId,value){
+  const r=DB.registros.find(x=>x.id===regId); const t=r.tasks.find(x=>x.id===taskId);
+  t.dataConclusao=value; await saveDB();
+}
+async function updateRegTaskNote(regId,taskId,value){
+  const r=DB.registros.find(x=>x.id===regId); const t=r.tasks.find(x=>x.id===taskId);
+  t.note=value; await saveDB();
+}
 
 /* ---------- AGENDA ---------- */
 function renderAgenda(){
