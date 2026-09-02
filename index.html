@@ -272,18 +272,27 @@ function normalizeDB(){
 function nextClienteNumero(){
   return DB.clientes.reduce((m,c)=>Math.max(m,Number(c.numero)||0),0)+1;
 }
-async function loadDB(){
+async function loadDB(attempt){
+  attempt = attempt || 1;
   try{
     const resp=await fetch(FIREBASE_URL+'/'+STORE_KEY+'.json');
     if(!resp.ok) throw new Error('falha na conexão com o Firebase');
     const data=await resp.json();
-    if(!data) throw new Error('banco vazio');
+    if(!data){
+      DB=defaultDB();
+      await saveDB();
+      return;
+    }
     DB=data;
     normalizeDB();
   }catch(e){
-    console.error('erro ao carregar do Firebase',e);
-    DB=defaultDB();
-    await saveDB();
+    console.error('erro ao carregar do Firebase (tentativa '+attempt+')',e);
+    if(attempt<4){
+      await new Promise(r=>setTimeout(r,800*attempt));
+      return loadDB(attempt+1);
+    }
+    DB={usuarios:[],clientes:[],receber:[],pagar:[],obrigacoes:[],agenda:[],crm:[],registros:[],config:{logoTexto:'Lima Consultoria',assinaturaEmail:'',diasAlerta:5,whatsappAtivo:false,emailAtivo:false}};
+    alert('Não foi possível conectar ao banco de dados agora. Verifique sua internet e recarregue a página. Nenhum dado foi apagado.');
   }
 }
 let saveTimer=null;
