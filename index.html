@@ -364,7 +364,15 @@ let IDB=null;
 function idbOpen(){ return new Promise((res,rej)=>{ const r=indexedDB.open('lima_financeiro',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function kv(mode,fn){ return new Promise((res,rej)=>{ const t=IDB.transaction('kv',mode); const o=t.objectStore('kv'); const q=fn(o); t.oncomplete=()=>res(q instanceof IDBRequest?q.result:undefined); t.onerror=()=>rej(t.error); }); }
 /* ======================= NUVEM (FIREBASE) ======================= */
-const FIREBASE_CONFIG = null; // ← preenchido na publicação; se vazio, o sistema pede para colar a configuração
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBhtmFGyPIZD0gx2_67qRHokqFhdBVbP8E",
+  authDomain: "lima-financeiro.firebaseapp.com",
+  databaseURL: "https://lima-financeiro-default-rtdb.firebaseio.com",
+  projectId: "lima-financeiro",
+  storageBucket: "lima-financeiro.firebasestorage.app",
+  messagingSenderId: "495305664277",
+  appId: "1:495305664277:web:9acec86d11e88ed9abab1c"
+}; // configuração pública do app web (a segurança está nas regras do banco e no login)
 let AUTH=null, REF=null, USER=null, SAVE_T=null, PENDING=false;
 function cfgFirebase(){ if(FIREBASE_CONFIG) return FIREBASE_CONFIG; try{ return JSON.parse(localStorage.getItem('limafin_fbcfg')||'null'); }catch(e){ return null; } }
 function parseCfg(t){ const o={}; ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{ const m=t.match(new RegExp(k+'\\s*["\']?\\s*:\\s*["\']([^"\']+)["\']')); if(m) o[k]=m[1]; });
