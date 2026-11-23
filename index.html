@@ -690,7 +690,7 @@ function rClientes(){
    l.map(c=>{ const ab=emAbertoCli(c.id); const vab=r2(ab.reduce((s,x)=>s+x.valor,0)), vv=r2(ab.filter(x=>status(x)==='vencido').reduce((s,x)=>s+x.valor,0));
     return `<tr><td><b>${esc(c.nome)}</b>${c.obs?'<br><span class="muted" style="font-size:12px">'+esc(c.obs)+'</span>':''}</td><td style="white-space:nowrap">${fmtDoc(c.doc)}</td><td>${esc(c.contato||'')}${c.whats?'<br><span class="muted">'+esc(c.whats)+'</span>':''}</td>
      <td class="n"><b>${num(c.hon)}</b></td><td>${c.dia||''}</td><td class="n">${vab?num(vab):'—'}</td><td class="n ${vv?'neg':''}">${vv?num(vv):'—'}</td><td>${c.ativo!==false?'<span class="tag t-ok">Ativo</span>':'<span class="tag t-err">Inativo</span>'}</td>
-     <td class="noprint" style="white-space:nowrap"><button class="b s o" data-act="cliExtrato" data-id="${c.id}">📄 Extrato</button> <button class="b s o" data-act="cliEditar" data-id="${c.id}">✎</button> <button class="b s r" data-act="cliExcluir" data-id="${c.id}">🗑</button></td></tr>`; }).join('')+
+     <td class="noprint" style="white-space:nowrap">${ab.length?`<button class="b s g" data-act="cliReceber" data-id="${c.id}" title="Registrar pagamento do que está em aberto">✔ Receber</button> `:''}<button class="b s o" data-act="cliExtrato" data-id="${c.id}">📄 Extrato</button> <button class="b s o" data-act="cliEditar" data-id="${c.id}">✎</button> <button class="b s r" data-act="cliExcluir" data-id="${c.id}">🗑</button></td></tr>`; }).join('')+
    (l.length?'':'<tr><td colspan="9" class="muted" style="text-align:center;padding:30px">Nenhum cliente. Clique em “+ Novo cliente” ou importe uma lista.</td></tr>')+`</tbody><tfoot><tr><td colspan="3">${l.length} cliente(s)</td><td class="n">${num(r2(l.reduce((s,c)=>s+(+c.hon||0),0)))}</td><td colspan="5"></td></tr></tfoot>`;
 }
 function formCli(id){
@@ -727,6 +727,15 @@ function extratoCli(id){
    <div class="scroll" style="max-height:380px"><table><thead><tr><th>Vencimento</th><th>Descrição</th><th class="n">Valor</th><th>Situação</th><th>Pago em</th><th class="noprint"></th></tr></thead><tbody>${l.map(x=>`<tr><td>${dt(x.venc)}</td><td>${esc(x.desc)}</td><td class="n">${num(x.valor)}</td><td>${stTag(x)}</td><td>${dt(x.dataPag)}</td>
     <td class="noprint" style="white-space:nowrap">${x.dataPag?`<button class="b s o" data-act="recibo" data-id="${x.id}">🧾</button>`:`<button class="b s g" data-act="baixa" data-id="${x.id}">Receber</button> <button class="b s wa" data-act="whats" data-id="${x.id}">💬</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Sem lançamentos.</td></tr>'}</tbody></table></div>
    <div class="row" style="margin-top:12px"><button class="b g" data-act="novoCli" data-id="${c.id}">+ Lançar cobrança avulsa</button><button class="b o" data-act="fechar">Fechar</button></div>`,true);
+}
+function formEscolherBaixa(cid,ab){
+  const c=cli(cid);
+  openModal(`<h2>Receber — ${esc(c.nome)}</h2><p class="muted">Marque o que o cliente pagou:</p>
+   <div class="scroll" style="max-height:320px"><table><thead><tr><th><input type="checkbox" class="chk" id="ebAll" checked></th><th>Vencimento</th><th>Descrição</th><th class="n">Valor</th><th>Situação</th></tr></thead><tbody>
+   ${ab.map(x=>`<tr><td><input type="checkbox" class="chk ebSel" value="${x.id}" checked></td><td>${dt(x.venc)}</td><td>${esc(x.desc)}</td><td class="n">${num(x.valor)}</td><td>${stTag(x)}</td></tr>`).join('')}</tbody></table></div>
+   <div class="row" style="margin-top:12px"><button class="b g" id="ebOk">✔ Continuar</button><button class="b o" data-act="fechar">Cancelar</button></div>`);
+  $('#ebAll').onchange=e=>$$('.ebSel').forEach(i=>i.checked=e.target.checked);
+  $('#ebOk').onclick=()=>{ const ids=$$('.ebSel:checked').map(i=>i.value); if(!ids.length) return toast('Marque pelo menos um'); formBaixa(ids); };
 }
 function formGerarHon(){
   const m=addMes(hoje().slice(0,7),0);
@@ -1005,6 +1014,7 @@ document.addEventListener('click',async e=>{
     recibo:()=>recibo(id), whats:()=>whats(id), transf:formTransf,
     baixaLote:()=>{ const ids=$$('.sel'+t.dataset.tipo+':checked').map(i=>i.value); if(!ids.length) return toast('Marque os lançamentos na primeira coluna'); formBaixa(ids); },
     csvLista:()=>{ const tp=t.dataset.tipo; const l=$('#tab-'+(tp==='R'?'receber':'pagar'))._lista||[]; csv([['Vencimento',tp==='R'?'Cliente':'Fornecedor','Descrição','Categoria','Valor','Situação','Pago em','Valor pago','Conta','Forma','Documento'],...l.map(x=>[dt(x.venc),nomePessoa(x),x.desc,cat(x.catId)?.nome||'',num(x.valor),status(x),dt(x.dataPag),x.dataPag?num(valorPago(x)):'',conta(x.contaId)?.nome||'',x.forma||'',x.doc||''])],(tp==='R'?'Contas_a_Receber_':'Contas_a_Pagar_')+hoje()+'.csv'); },
+    cliReceber:()=>{ const ab=emAbertoCli(id).sort((x,y)=>x.venc.localeCompare(y.venc)); if(ab.length===1) return formBaixa(ab[0].id); formEscolherBaixa(id,ab); },
     cliNovo:()=>formCli(), cliEditar:()=>formCli(id), cliExcluir:()=>excluirCli(id), cliExtrato:()=>extratoCli(id),
     novoCli:()=>{ formLanc('R'); $('#frmL [name=clienteId]').value=id; },
     gerarHon:formGerarHon, reajuste:formReajuste,
