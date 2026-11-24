@@ -44,6 +44,8 @@ main{padding:20px 24px;max-width:1500px;margin:0 auto}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+.grid2>*,.kpis>*{min-width:0}
+.card{overflow-wrap:anywhere}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
 .kpi{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:8px;padding:12px 14px}
 .kpi b{display:block;font-size:20px;color:var(--navy);margin-top:4px;font-variant-numeric:tabular-nums}
