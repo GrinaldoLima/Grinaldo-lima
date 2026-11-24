@@ -642,8 +642,23 @@ function whats(id){
   const venc=status(l)==='vencido';
   const msg=`Olá, ${c.contato||c.nome}! Tudo bem?\n\n${venc?'Identificamos em aberto':'Passando para lembrar'} o pagamento referente a *${l.desc}*${l.comp?' (competência '+fmtMes(l.comp)+')':''}, no valor de *${brl(l.valor)}*, com vencimento ${venc?'em':'em'} *${dt(l.venc)}*.`+
    (e.pix?`\n\nChave PIX: *${e.pix}*`:'')+`\n\n${venc?'Se o pagamento já foi feito, por favor desconsidere esta mensagem e nos envie o comprovante.':'Qualquer dúvida, estamos à disposição.'}\n\nAtenciosamente,\n${e.resp}\n${e.nome}`;
-  window.open('https://wa.me/'+fone+'?text='+encodeURIComponent(msg),'_blank');
-  l.cobrado=(l.cobrado||0)+1; l.ultCobr=hoje(); salvar();
+  const link=()=>'https://wa.me/'+onlyDig($('#waFone').value)+'?text='+encodeURIComponent($('#waMsg').value);
+  openModal(`<h2>💬 Cobrar no WhatsApp</h2>
+   <p><b>${esc(c.nome)}</b> — ${esc(l.desc)} · <b>${brl(l.valor)}</b></p>
+   <div class="form">
+    <label>WhatsApp (com DDI 55 + DDD)<input id="waFone" value="${fone}"></label>
+    <label class="full">Mensagem (pode editar)<textarea id="waMsg" rows="11" style="width:100%;font-family:inherit;font-size:14px;padding:8px">${esc(msg)}</textarea></label>
+   </div>
+   <p class="muted" style="font-size:12px">Confira o número: telefone fixo não tem WhatsApp.</p>
+   <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+    <a id="waGo" class="b wa" target="_blank" rel="noopener" href="#" style="text-decoration:none;color:#fff">Abrir no WhatsApp</a>
+    <button class="b o" id="waCopy" type="button">Copiar mensagem</button>
+    <button class="b o" data-act="fechar" type="button">Fechar</button>
+   </div>`,true);
+  const go=$('#waGo'); go.href=link();
+  $('#waFone').oninput=$('#waMsg').oninput=()=>{ go.href=link(); };
+  go.onclick=()=>{ go.href=link(); l.cobrado=(l.cobrado||0)+1; l.ultCobr=hoje(); salvar(); setTimeout(closeModal,300); };
+  $('#waCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText($('#waMsg').value); toast('Mensagem copiada'); }catch(e){ $('#waMsg').select(); document.execCommand('copy'); toast('Mensagem copiada'); } };
 }
 
 /* ======================= FLUXO DE CAIXA ======================= */
